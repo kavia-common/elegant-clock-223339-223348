@@ -1,6 +1,20 @@
-# elegant_clock - Qt container build
+# elegant_clock - Qt container build (Qt6 prebuilt base image)
 
-This container robustly installs Qt development packages with multiple strategies, preferring Qt6 and falling back to Qt5 or aqtinstall if apt-based installs are restricted. It then builds the app with CMake/Ninja.
+This container now uses a prebuilt Qt6 desktop base image to eliminate failures caused by missing or restricted apt-based Qt dev packages. The image already includes Qt6 toolchains and CMake/Ninja, so we only configure, build, and run.
+
+Why this change:
+- Reliability: Avoids apt repository restrictions and mirrors that often block Qt dev packages.
+- Speed: No heavy package installs; uses pre-provisioned Qt6.
+- Consistency: Same Qt toolchain in build and runtime stages avoids runtime missing-library issues.
+
+Base image:
+- Default: ghcr.io/qtproject/qt:6.6-desktop
+- If your environment cannot access GHCR, replace the base in the Dockerfile with a similar Qt6 desktop image that provides Qt6::Widgets, cmake and ninja.
+
+Environment setup:
+- PATH, CMAKE_PREFIX_PATH, and PKG_CONFIG_PATH are set so CMake can find Qt6.
+- A lightweight verification step (qmake -v when available, cmake --version, ninja --version) is executed during build.
+- A configure-only check is implicit via: cmake -S . -B build -G Ninja.
 
 Build:
   docker build -t elegant_clock:latest .
@@ -8,19 +22,6 @@ Build:
 Run (the app shows a small label and exits after ~200ms as part of the test harness):
   docker run --rm elegant_clock:latest
 
-Key improvements and verification in Dockerfile:
-- Base image explicitly set to Ubuntu 22.04 (jammy) to avoid restricted 24.04 mirrors.
-- Explicit /etc/apt/sources.list entries for main, universe, multiverse (including updates, backports, security).
-- apt-get update with retry logic.
-- Toolchain: build-essential, cmake, ninja-build, pkg-config, GL/X11 headers (libgl1-mesa-dev, xorg-dev).
-- Qt6 dev stack attempted first: qt6-base-dev, qt6-base-dev-tools, qt6-tools-dev, qt6-tools-dev-tools, qml6-module-qtquick, qt6-declarative-dev.
-- If Qt6 not found, add Qt PPA (ppa:qt/qt6-base) and retry.
-- If still not found, fallback to Qt5 dev packages.
-- If apt-based Qt unavailable entirely, pivot to aqtinstall: aqt install-qt linux desktop 6.6.2 gcc_64, export PATH and CMAKE_PREFIX_PATH.
-- Verification: pkg-config --exists Qt6Core || pkg-config --exists Qt5Core; as final guard, presence of /opt/Qt/6.6.2/gcc_64/bin/qmake; fail early with a clear message otherwise.
-- Ensured non-interactive apt (DEBIAN_FRONTEND=noninteractive), used --no-install-recommends, and cleaned apt lists.
-- Minimal ldd verification to confirm Qt libraries are linked in the built binary.
-
 Notes:
-- If enterprise repositories block both Ubuntu Qt packages and the Qt PPA, the aqtinstall path ensures Qt 6.6.2 is provisioned, and CMAKE_PREFIX_PATH is set so CMake can discover it.
-- You may pin a different Qt version in the Dockerfile by changing the aqt install line and PATH/CMAKE_PREFIX_PATH snippets accordingly.
+- We use the same Qt base image for the runtime stage to ensure all required Qt6 runtime libraries are present.
+- If the base image uses a different Qt install path, adjust QT_HOME, CMAKE_PREFIX_PATH, and LD_LIBRARY_PATH accordingly in the Dockerfile.
